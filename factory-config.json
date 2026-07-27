@@ -1,0 +1,18 @@
+{
+  "factory": {
+    "code": "GS1",
+    "name": "Nhà máy Goldsun Hà Nội",
+    "storage_namespace": "gsp.factory.gs1"
+  },
+  "source": {
+    "type": "drive_xlsx",
+    "file_id": "1c3_CSdnh9sxALEt-6FKyrd-4-J1K_Yhl",
+    "file_name": "P3_Tong_Hop_LTT_2507-HN.xlsx",
+    "sheet_name": "P3.Tổng hợp lệnh thao tác",
+    "range": "A9:CT"
+  },
+  "dashboard": {
+    "segment_mode": "gs1_parent_line_af",
+    "task_source_enabled": false
+  }
+}
