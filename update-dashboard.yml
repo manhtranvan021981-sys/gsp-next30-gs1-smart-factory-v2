@@ -1,0 +1,82 @@
+name: Cập nhật Factory Dashboard
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: factory-pages-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Lấy mã nguồn
+        uses: actions/checkout@v4
+
+      - name: Cài Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Kiểm tra phiên bản Excel trên Drive
+        id: source
+        run: |
+          python scripts/process_excel.py \
+            --config factory-config.json \
+            --probe \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Khôi phục dữ liệu đã xử lý đúng phiên bản
+        id: data-cache
+        uses: actions/cache@v4
+        with:
+          path: site/data
+          key: factory-data-v2-af-${{ steps.source.outputs.signature }}
+
+      - name: Xử lý Excel thành dữ liệu theo tháng
+        if: steps.data-cache.outputs.cache-hit != 'true'
+        run: >-
+          python scripts/process_excel.py
+          --config factory-config.json
+          --out site/data
+
+      - name: Kiểm tra dữ liệu trước khi phát hành
+        if: steps.data-cache.outputs.cache-hit != 'true' || github.event_name == 'workflow_dispatch'
+        run: >-
+          python scripts/verify_build.py
+          --config factory-config.json
+          --data site/data
+
+      - name: Chuẩn bị website
+        if: steps.data-cache.outputs.cache-hit != 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          cp index.html site/index.html
+          cp factory-config.js site/factory-config.js
+          touch site/.nojekyll
+
+      - name: Cấu hình GitHub Pages
+        if: steps.data-cache.outputs.cache-hit != 'true' || github.event_name == 'workflow_dispatch'
+        uses: actions/configure-pages@v5
+
+      - name: Đóng gói GitHub Pages
+        if: steps.data-cache.outputs.cache-hit != 'true' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Phát hành dashboard
+        if: steps.data-cache.outputs.cache-hit != 'true' || github.event_name == 'workflow_dispatch'
+        id: deployment
+        uses: actions/deploy-pages@v4
