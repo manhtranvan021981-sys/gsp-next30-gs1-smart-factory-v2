@@ -41,7 +41,7 @@ PLANT_CODE = ""
 PLANT_NAME = ""
 SOURCE_TYPE = "drive_xlsx"
 SEGMENT_MODE = "auto_value_stream"
-SCHEMA_VERSION = "gsp-factory-static-shards-v1"
+SCHEMA_VERSION = "gsp-factory-static-shards-v2-af-alias"
 MAX_COLUMNS = 98  # A:CT, zero-based indices 0..97.
 
 GS1_AF_SEGMENT_CATALOG = {
@@ -50,7 +50,7 @@ GS1_AF_SEGMENT_CATALOG = {
     "HBD": "03_Nhóm hàng Hộp bồi duplex",
     "HBL": "04_Nhóm hàng Hộp bồi label",
     "FLC": "05_Nhóm hàng Hộp Flexo carton",
-    "FLP": "06_Nhóm hàng Hộp Flexo proces",
+    "FLP": "06_Nhóm hàng Hộp Flexo process",
     "FPK": "07_Nhóm hàng PK phôi carton",
     "SHD": "08_Nhóm hàng Sách hướng dẫn",
     "PLL": "09_Nhóm hàng Pallet",
@@ -64,6 +64,19 @@ GS1_AF_SEGMENT_CATALOG = {
     "KHC": "17_Nhóm hàng khác",
     "LE": "18_Nhóm Lề, phế",
     "TCKT": "19_Nhóm hàng thương mại",
+}
+GS1_AF_ALIAS = {
+    "SOB": "PHOI",
+    "SOE": "PHOI",
+    "SOA": "PHOI",
+    "SBA": "PHOI",
+    "SBC": "PHOI",
+    "SBE": "PHOI",
+    "SOC": "PHOI",
+    "SOG": "PHOI",
+    "SEE": "PHOI",
+    "SEC": "PHOI",
+    "DUP": "HBL",
 }
 AF_MISSING_LABEL = "00_Chưa khai báo dòng hàng mẹ"
 AF_CONFLICT_LABEL = "98_Xung đột AF theo LTT/phiếu"
@@ -138,6 +151,11 @@ def clean_text(value: Any) -> str:
 
 def normalize_af(value: Any) -> str:
     return clean_text(value).upper()
+
+
+def canonical_af(value: Any) -> str:
+    normalized = normalize_af(value)
+    return GS1_AF_ALIAS.get(normalized, normalized)
 
 
 def finite(value: float) -> float:
@@ -276,7 +294,7 @@ def classify_segment(
     af_conflict_ltts: set[str] | None = None,
     af_conflict_stats: set[str] | None = None,
 ) -> str:
-    line_mother = normalize_af(raw_at(raw, 31))
+    line_mother = canonical_af(raw_at(raw, 31))
     ltt = clean_text(raw_at(raw, 2))
     stat = clean_text(raw_at(raw, 45))
     if segment_mode in {"gs1_parent_line_af", "gs1_value_stream"}:
@@ -471,13 +489,14 @@ def process_raw_row(
     finish = parse_datetime_value(raw[56])
     flags: list[str] = []
     if segment_mode in {"gs1_parent_line_af", "gs1_value_stream"}:
-        line_mother = normalize_af(raw[31])
+        raw_af = normalize_af(raw[31])
+        line_mother = canonical_af(raw_af)
         ltt = clean_text(raw[2])
         stat = clean_text(raw[45])
-        if not line_mother:
+        if not raw_af:
             flags.append("AF trống")
         elif line_mother not in GS1_AF_SEGMENT_CATALOG:
-            flags.append(f"AF ngoài danh mục: {line_mother}")
+            flags.append(f"AF ngoài danh mục: {raw_af}")
         if ltt and af_conflict_ltts and ltt in af_conflict_ltts:
             flags.append("Xung đột AF theo LTT")
         if stat and af_conflict_stats and stat in af_conflict_stats:
@@ -746,7 +765,7 @@ def collect_af_quality(
     ltt_values: dict[str, set[str]] = defaultdict(set)
     stat_values: dict[str, set[str]] = defaultdict(set)
     code_rows: dict[str, int] = defaultdict(int)
-    accepted_keys: list[tuple[str, str, str]] = []
+    accepted_keys: list[tuple[str, str, str, str]] = []
     accepted_rows = 0
     with source_rows(source_path, source_type, sheet_name) as rows:
         header_ok = False
@@ -773,11 +792,12 @@ def collect_af_quality(
             ):
                 continue
             accepted_rows += 1
-            af = normalize_af(raw_at(raw, 31))
-            code_rows[af or "__MISSING__"] += 1
+            raw_af = normalize_af(raw_at(raw, 31))
+            af = canonical_af(raw_af)
+            code_rows[raw_af or "__MISSING__"] += 1
             ltt = clean_text(raw_at(raw, 2))
             stat = clean_text(raw_at(raw, 45))
-            accepted_keys.append((af, ltt, stat))
+            accepted_keys.append((raw_af, af, ltt, stat))
             if ltt:
                 ltt_values[ltt].add(af or "__MISSING__")
             if stat:
@@ -795,16 +815,24 @@ def collect_af_quality(
     unmapped_codes = {
         code: count
         for code, count in code_rows.items()
-        if code != "__MISSING__" and code not in GS1_AF_SEGMENT_CATALOG
+        if (
+            code != "__MISSING__"
+            and canonical_af(code) not in GS1_AF_SEGMENT_CATALOG
+        )
+    }
+    alias_code_rows = {
+        code: code_rows.get(code, 0)
+        for code in GS1_AF_ALIAS
+        if code_rows.get(code, 0)
     }
     valid_rows = 0
     missing_rows = 0
     unmapped_rows = 0
     conflict_rows = 0
-    for af, ltt, stat in accepted_keys:
+    for raw_af, af, ltt, stat in accepted_keys:
         if (ltt and ltt in conflict_ltts) or (stat and stat in conflict_stats):
             conflict_rows += 1
-        elif not af:
+        elif not raw_af:
             missing_rows += 1
         elif af not in GS1_AF_SEGMENT_CATALOG:
             unmapped_rows += 1
@@ -818,6 +846,8 @@ def collect_af_quality(
         "raw_missing_rows": raw_missing_rows,
         "unmapped_rows": unmapped_rows,
         "raw_unmapped_rows": sum(unmapped_codes.values()),
+        "alias_rows": sum(alias_code_rows.values()),
+        "alias_code_rows": dict(sorted(alias_code_rows.items())),
         "conflict_rows": conflict_rows,
         "unmapped_codes": dict(
             sorted(unmapped_codes.items(), key=lambda item: (-item[1], item[0]))
@@ -1113,6 +1143,8 @@ def build_data(
         "raw_missing_rows": 0,
         "unmapped_rows": 0,
         "raw_unmapped_rows": 0,
+        "alias_rows": 0,
+        "alias_code_rows": {},
         "conflict_rows": 0,
         "unmapped_codes": {},
         "conflict_ltts": set(),
@@ -1252,6 +1284,8 @@ def build_data(
                             "g": clean_text(raw_at(raw, 6)),
                             "k": clean_text(raw_at(raw, 10)),
                             "af_values": set(),
+                            "af_canonical_values": set(),
+                            "has_af_conflict": False,
                             "variants": {},
                             "filters": set(),
                         },
@@ -1259,6 +1293,11 @@ def build_data(
                     group["af_values"].add(
                         normalize_af(raw_at(raw, 31)) or "(trống)"
                     )
+                    group["af_canonical_values"].add(
+                        canonical_af(raw_at(raw, 31)) or "__MISSING__"
+                    )
+                    if processed_obj["segment"] == AF_CONFLICT_LABEL:
+                        group["has_af_conflict"] = True
                     ab = clean_text(raw_at(raw, 27))
                     machine_filter = clean_text(raw_at(raw, 47) or raw_at(raw, 27))
                     if ab:
@@ -1334,9 +1373,11 @@ def build_data(
     for ltt, group in schedule_candidates.items():
         variants = list(group["variants"].values())
         af_values = sorted(group["af_values"])
+        af_canonical_values = sorted(group["af_canonical_values"])
         af_conflict = (
-            len(af_values) > 1
+            len(af_canonical_values) > 1
             or ltt in af_quality["conflict_ltts"]
+            or group["has_af_conflict"]
         )
         conflict = len(variants) > 1 or ltt in plan_conflict or af_conflict
         for variant in variants:
@@ -1405,7 +1446,7 @@ def build_data(
     )
     manifest = {
         "schema": SCHEMA_VERSION,
-        "schema_version": 1,
+        "schema_version": 2,
         "plant": plant_code,
         "plant_name": plant_name,
         "segment_mode": segment_mode,
@@ -1455,6 +1496,9 @@ def build_data(
                 "raw_missing_rows": af_quality["raw_missing_rows"],
                 "unmapped_rows": af_quality["unmapped_rows"],
                 "raw_unmapped_rows": af_quality["raw_unmapped_rows"],
+                "alias_rows": af_quality["alias_rows"],
+                "alias_code_rows": af_quality["alias_code_rows"],
+                "aliases": GS1_AF_ALIAS,
                 "conflict_rows": af_quality["conflict_rows"],
                 "unmapped_codes": af_quality["unmapped_codes"],
                 "conflict_ltts": len(af_quality["conflict_ltts"]),

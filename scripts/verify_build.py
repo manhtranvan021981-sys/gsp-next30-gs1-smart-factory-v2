@@ -75,7 +75,7 @@ GS1_AF_SEGMENTS = {
     "03_Nhóm hàng Hộp bồi duplex",
     "04_Nhóm hàng Hộp bồi label",
     "05_Nhóm hàng Hộp Flexo carton",
-    "06_Nhóm hàng Hộp Flexo proces",
+    "06_Nhóm hàng Hộp Flexo process",
     "07_Nhóm hàng PK phôi carton",
     "08_Nhóm hàng Sách hướng dẫn",
     "09_Nhóm hàng Pallet",
@@ -113,7 +113,7 @@ def main() -> int:
     assert config["dashboard"]["segment_mode"] == "gs1_parent_line_af"
     manifest_path = args.data / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert manifest["schema"] == "gsp-factory-static-shards-v1"
+    assert manifest["schema"] == "gsp-factory-static-shards-v2-af-alias"
     assert manifest["plant"] == expected_plant, (
         f"Sai nhà máy: manifest={manifest['plant']}, "
         f"yêu cầu={expected_plant}."
@@ -141,6 +141,19 @@ def main() -> int:
     assert total == manifest["global"]["accepted_rows"]
     af_quality = manifest["global"]["af_quality"]
     assert af_quality["catalog_size"] == 19
+    assert af_quality["aliases"] == {
+        "SOB": "PHOI",
+        "SOE": "PHOI",
+        "SOA": "PHOI",
+        "SBA": "PHOI",
+        "SBC": "PHOI",
+        "SBE": "PHOI",
+        "SOC": "PHOI",
+        "SOG": "PHOI",
+        "SEE": "PHOI",
+        "SEC": "PHOI",
+        "DUP": "HBL",
+    }
     assert (
         af_quality["valid_rows"]
         + af_quality["missing_rows"]
