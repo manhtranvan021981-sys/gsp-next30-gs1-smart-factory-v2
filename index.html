@@ -364,7 +364,7 @@ if(!SMART_FACTORY_SOURCE_CONFIG){
 }
 const FACTORY_CODE=SMART_FACTORY_SOURCE_CONFIG.identity.plantCode;
 const FACTORY_NAME=SMART_FACTORY_SOURCE_CONFIG.identity.plantName;
-const FACTORY_SCHEMA='gsp-factory-static-shards-v1';
+const FACTORY_SCHEMA='gsp-factory-static-shards-v2-af-alias';
 window.GSP_FACTORY_CODE=FACTORY_CODE;
 const smartFactorySheetId=window.smartFactorySheetId=function(source){
   const raw=String((source&&source.url)||(source&&source.fileId)||'').trim();
@@ -398,7 +398,7 @@ const GS1_AF_SEGMENT_CATALOG=Object.freeze([
   ['HBD','03_Nhóm hàng Hộp bồi duplex'],
   ['HBL','04_Nhóm hàng Hộp bồi label'],
   ['FLC','05_Nhóm hàng Hộp Flexo carton'],
-  ['FLP','06_Nhóm hàng Hộp Flexo proces'],
+  ['FLP','06_Nhóm hàng Hộp Flexo process'],
   ['FPK','07_Nhóm hàng PK phôi carton'],
   ['SHD','08_Nhóm hàng Sách hướng dẫn'],
   ['PLL','09_Nhóm hàng Pallet'],
@@ -413,19 +413,38 @@ const GS1_AF_SEGMENT_CATALOG=Object.freeze([
   ['LE','18_Nhóm Lề, phế'],
   ['TCKT','19_Nhóm hàng thương mại']
 ]);
+const GS1_AF_ALIAS=Object.freeze({
+  SOB:'PHOI',
+  SOE:'PHOI',
+  SOA:'PHOI',
+  SBA:'PHOI',
+  SBC:'PHOI',
+  SBE:'PHOI',
+  SOC:'PHOI',
+  SOG:'PHOI',
+  SEE:'PHOI',
+  SEC:'PHOI',
+  DUP:'HBL'
+});
 const GS1_AF_LABEL_BY_CODE=Object.freeze(Object.fromEntries(GS1_AF_SEGMENT_CATALOG));
 const GS1_AF_MISSING='00_Chưa khai báo dòng hàng mẹ';
 const GS1_AF_CONFLICT='98_Xung đột AF theo LTT/phiếu';
 const GS1_AF_UNMAPPED='99_AF chưa ánh xạ';
 const GS1_AF_SPECIAL_SEGMENTS=Object.freeze([GS1_AF_MISSING,GS1_AF_CONFLICT,GS1_AF_UNMAPPED]);
 window.GSP_GS1_AF_SEGMENT_CATALOG=GS1_AF_SEGMENT_CATALOG;
+window.GSP_GS1_AF_ALIAS=GS1_AF_ALIAS;
 window.GSP_GS1_AF_SPECIAL_SEGMENTS=GS1_AF_SPECIAL_SEGMENTS;
 function normalizeAf(v){return cleanText(v).toUpperCase();}
+function canonicalAf(v){
+  const normalized=normalizeAf(v);
+  return GS1_AF_ALIAS[normalized]||normalized;
+}
 function segmentFromAf(v){
-  const af=normalizeAf(v);
+  const af=canonicalAf(v);
   if(!af) return GS1_AF_MISSING;
   return GS1_AF_LABEL_BY_CODE[af]||GS1_AF_UNMAPPED;
 }
+window.gspGs1CanonicalAf=canonicalAf;
 window.gspGs1SegmentFromAf=segmentFromAf;
 function orderedSegmentValues(rows){
   const present=new Set((rows||[]).map(r=>r.segment).filter(Boolean));
@@ -441,7 +460,7 @@ function segmentOptions(rows,selected='all',allLabel='Tất cả dòng hàng'){
 function collectAfContext(rawRows){
   const lttMap=new Map(), statMap=new Map();
   for(const raw of rawRows){
-    const af=normalizeAf(raw[31])||'__MISSING__';
+    const af=canonicalAf(raw[31])||'__MISSING__';
     const ltt=cleanText(raw[2]), stat=cleanText(raw[45]);
     if(ltt){if(!lttMap.has(ltt))lttMap.set(ltt,new Set());lttMap.get(ltt).add(af);}
     if(stat){if(!statMap.has(stat))statMap.set(stat,new Set());statMap.get(stat).add(af);}
@@ -671,9 +690,9 @@ function processRawRow(raw,afContext){
   const start=parseDateValue(raw[55]), finish=parseDateValue(raw[56]);
   const flags=[];
   if(['gs1_parent_line_af','gs1_value_stream'].includes(SMART_FACTORY_SOURCE_CONFIG.dashboard.segmentMode)){
-    const af=normalizeAf(raw[31]), ltt=cleanText(raw[2]), stat=cleanText(raw[45]);
-    if(!af) flags.push('AF trống');
-    else if(!GS1_AF_LABEL_BY_CODE[af]) flags.push('AF ngoài danh mục: '+af);
+    const rawAf=normalizeAf(raw[31]), af=canonicalAf(rawAf), ltt=cleanText(raw[2]), stat=cleanText(raw[45]);
+    if(!rawAf) flags.push('AF trống');
+    else if(!GS1_AF_LABEL_BY_CODE[af]) flags.push('AF ngoài danh mục: '+rawAf);
     if(ltt&&afContext&&afContext.conflictLtts.has(ltt)) flags.push('Xung đột AF theo LTT');
     if(stat&&afContext&&afContext.conflictStats.has(stat)) flags.push('Xung đột AF theo phiếu thống kê');
   }
@@ -1602,7 +1621,7 @@ function renderData(rows){
   const issues={};
   rows.forEach(r=>String(r.flags||'').split('; ').filter(Boolean).forEach(f=>issues[f]=(issues[f]||0)+1));
   bars('chartDataQuality',Object.entries(issues).map(([issue,count])=>({issue,count})),'issue','count',{n:10,color:'red'});
-  $('dqConclusion').innerHTML=`<div class="alert red"><b>Điểm kiểm soát bắt buộc:</b> AF trống, AF ngoài danh mục hoặc cùng LTT/phiếu có nhiều AF đều được đưa vào nhóm lỗi riêng và đánh Data đỏ; không nhập nhằng với 17_Nhóm hàng khác.</div><div class="alert"><b>Quy tắc:</b> bộ lọc Dòng hàng mẹ chỉ lấy cột AF sau chuẩn hóa khoảng trắng và chữ hoa; không suy luận từ mã vật tư, tên vật tư, máy hay công đoạn.</div>`;
+  $('dqConclusion').innerHTML=`<div class="alert red"><b>Điểm kiểm soát bắt buộc:</b> AF trống, AF ngoài danh mục hoặc cùng LTT/phiếu có nhiều mảng chuẩn đều được đưa vào nhóm lỗi riêng và đánh Data đỏ; không nhập nhằng với 17_Nhóm hàng khác.</div><div class="alert"><b>Quy tắc:</b> bộ lọc Dòng hàng mẹ chỉ lấy cột AF sau chuẩn hóa khoảng trắng và chữ hoa; SOB/SOE/SOA/SBA/SBC/SBE/SOC/SOG/SEE/SEC quy về PHOI, DUP quy về HBL; không suy luận từ mã vật tư, tên vật tư, máy hay công đoạn.</div>`;
   const bad=rows.filter(r=>r.confidence!=='Xanh');
   table('tblData',['Data','Dòng hàng mẹ (AF)','Ngày','LTT','Phiếu','Máy','Thợ chính','OEE','A','P','Downtime','Flags'],bad,r=>[td(`<span class="badge ${cls[r.confidence]||'gray'}">${esc(r.confidence)}</span>`),td(esc(r.segment)),td(esc(r.date)),td(esc(r.ltt)),td(esc(r.stat)),td(esc(r.machine)),td(esc(r.operator)),td(pct(r.oee),'num'),td(pct(r.A),'num'),td(pct(r.P),'num'),td(dec(r.downtime)+'h','num'),td(esc(r.flags))],200);
 }
@@ -1969,9 +1988,13 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     var groups=new Map();
     SOURCE_ROWS.forEach(function(r){
       var l=clean(r.l);if(!l)return;var g=groups.get(l);
-      if(!g){g={l:l,f:clean(r.f),g:clean(r.g),k:clean(r.k),afValues:new Set(),actual:0,actualTotal:0,plans:new Set(),variants:new Map(),filters:new Set(),segments:new Set(),sourceConflict:false,afConflict:false};groups.set(l,g);}
+      if(!g){g={l:l,f:clean(r.f),g:clean(r.g),k:clean(r.k),afValues:new Set(),afCanonicalValues:new Set(),actual:0,actualTotal:0,plans:new Set(),variants:new Map(),filters:new Set(),segments:new Set(),sourceConflict:false,afConflict:false};groups.set(l,g);}
       if(!g.f)g.f=clean(r.f);if(!g.g)g.g=clean(r.g);if(!g.k)g.k=clean(r.k);
-      if(clean(r.af))g.afValues.add(clean(r.af));
+      if(clean(r.af)){
+        g.afValues.add(clean(r.af));
+        var canonical=typeof window.gspGs1CanonicalAf==='function'?window.gspGs1CanonicalAf(r.af):clean(r.af).toUpperCase();
+        if(canonical)g.afCanonicalValues.add(canonical);
+      }
       if(clean(r.seg))g.segments.add(clean(r.seg));
       if(r.sourceConflict)g.sourceConflict=true;
       if(r.afConflict)g.afConflict=true;
@@ -1981,7 +2004,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       var key=[clean(r.ab),String(r.x==null?'':r.x),String(r.y==null?'':r.y)].join('||');if(!g.variants.has(key))g.variants.set(key,{ab:clean(r.ab),x:r.x,y:r.y});
     });
     var rows=[];groups.forEach(function(g){
-      var plans=uniqueValues(g.plans),plan=plans.length?toNum(plans[0]):0,actual=g.actualTotal||g.actual,variants=Array.from(g.variants.values()),afValues=Array.from(g.afValues),af=afValues.join(' / '),afConflict=g.afConflict||afValues.length>1,gSegments=Array.from(g.segments),segment=afConflict?'98_Xung đột AF theo LTT/phiếu':(gSegments[0]||segmentFrom(af,'',g.g)),conflict=variants.length>1||plans.length>1||g.sourceConflict||afConflict||gSegments.length>1;
+      var plans=uniqueValues(g.plans),plan=plans.length?toNum(plans[0]):0,actual=g.actualTotal||g.actual,variants=Array.from(g.variants.values()),afValues=Array.from(g.afValues),af=afValues.join(' / '),canonicalValues=Array.from(g.afCanonicalValues),gSegments=Array.from(g.segments),afConflict=g.afConflict||canonicalValues.length>1||gSegments.length>1||gSegments.indexOf('98_Xung đột AF theo LTT/phiếu')>=0,segment=afConflict?'98_Xung đột AF theo LTT/phiếu':(gSegments[0]||segmentFrom(canonicalValues[0]||af,'',g.g)),conflict=variants.length>1||plans.length>1||g.sourceConflict||afConflict;
       variants.forEach(function(v){rows.push({l:g.l,f:g.f,g:g.g,k:g.k,af:af,s:plan,bg:actual,ab:v.ab,x:parseDT(v.x),y:parseDT(v.y),segment:segment,filters:Array.from(g.filters),dataConflict:conflict,planConflict:plans.length>1,afConflict:afConflict});});
     });return rows;
   }

@@ -13,6 +13,11 @@ namespace riêng.
 - Điều kiện nhận dòng: cột E bằng `GS1`
 - Bộ lọc `Dòng hàng mẹ (AF)` dùng duy nhất cột AF, chuẩn hóa khoảng trắng và
   chữ hoa rồi so khớp chính xác với danh mục 19 mã `HOC…TCKT`.
+- Alias đã duyệt: `SOB, SOE, SOA, SBA, SBC, SBE, SOC, SOG, SEE, SEC`
+  được quy về `PHOI`; `DUP` được quy về `HBL`. Mã AF gốc vẫn được giữ để
+  truy vết.
+- Xung đột theo LTT/phiếu được kiểm tra sau khi quy đổi alias về mã chuẩn:
+  `SOB + SOE` không xung đột; `SOB + DUP` là xung đột thật.
 - Không suy luận dòng hàng từ mã vật tư, tên vật tư, máy, công đoạn hoặc
   dòng hàng con.
 - Dữ liệu bất thường được tách riêng:
@@ -36,5 +41,5 @@ namespace riêng.
 - `factory-config.json`: bộ xử lý dữ liệu và workflow.
 - `factory-config.js`: giao diện và nhận diện nhà máy.
 
-Giữ bản V1 làm rollback; V2 dùng cache dữ liệu riêng để không khôi phục nhầm
-gói phân loại 6 value stream cũ.
+Giữ bản V1 làm rollback; V2 alias dùng schema và cache dữ liệu riêng để bắt
+buộc tiền xử lý lại nguồn, không khôi phục nhầm gói phân loại cũ.
