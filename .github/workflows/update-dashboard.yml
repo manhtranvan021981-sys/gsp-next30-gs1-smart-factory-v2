@@ -43,7 +43,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: site/data
-          key: factory-data-v2-af-${{ steps.source.outputs.signature }}
+          key: factory-data-v3-af-alias-${{ steps.source.outputs.signature }}
 
       - name: Xử lý Excel thành dữ liệu theo tháng
         if: steps.data-cache.outputs.cache-hit != 'true'
